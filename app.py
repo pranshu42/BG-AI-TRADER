@@ -6,14 +6,14 @@ import requests
 import time
 from datetime import datetime, timezone, date
 
-st.set_page_config(page_title="BG AI CRYPTO TRADER", page_icon="₿", layout="wide")
+st.set_page_config(page_title="BG AI CRYPTO TRADER v1.3", page_icon="₿", layout="wide")
 st.title("₿ BG AI CRYPTO TRADER")
-st.caption("BTC Spot • Automatic Paper Trading • No real orders")
+st.caption("BTC Spot + Simulated Short • Auto Paper Trading • No real orders")
 
 st.warning(
     "यह केवल Paper Trading है। Coinbase का सार्वजनिक BTC-USD डेटा पढ़ा जाता है। "
-    "कोई Exchange Account/API Key या असली BUY/SELL Order नहीं। ऐप 24×7 background में नहीं चलता; "
-    "Scan/Refresh करना जरूरी है। Streamlit restart होने पर session वाला Paper Account reset हो सकता है।"
+    "Long और Short दोनों केवल simulation हैं; कोई Futures order, leverage या असली BUY/SELL नहीं। "
+    "Auto Scan के लिए पेज खुला/सक्रिय रहना चाहिए। Streamlit restart पर session reset हो सकता है।"
 )
 
 STARTING_INR = 5000.0
@@ -88,7 +88,7 @@ if st.session_state.pnl_date != today:
     st.session_state.day_pnl = 0.0
 
 st.subheader("Market & Strategy")
-st.write("Data: Coinbase BTC-USD 5-minute candles. Strategy: EMA 9/21 + RSI filter. Long-only paper trades; no leverage.")
+st.write("Data: Coinbase BTC-USD 5-minute candles. Strategies: Buy-the-Dip reversal + Downtrend Short simulation. No real orders or leverage.")
 
 auto_scan = st.toggle("🤖 Auto Scan चालू करें (हर 1 मिनट)", value=False)
 if auto_scan:
@@ -128,78 +128,87 @@ scan = st.session_state.last_scan
 
 if scan:
     signal = "WAIT"
-    if scan["ema9"] > scan["ema21"] and 50 <= scan["rsi"] <= 68:
-        signal = "BUY SETUP"
-    elif scan["ema9"] < scan["ema21"] or scan["rsi"] > 75:
-        signal = "EXIT / NO BUY"
+    candle = scan["df"].iloc[-1]
+    previous = scan["df"].iloc[-2]
+    # Buy-the-Dip: price had been weak, then a green candle/recovery confirmation appears.
+    buy_dip = (
+        scan["ema9"] > scan["ema21"]
+        and float(candle["close"]) > float(candle["open"])
+        and float(candle["close"]) > float(previous["close"])
+        and 40 <= scan["rsi"] <= 58
+    )
+    # Short simulation: bearish trend with weak RSI; no exchange/futures order is sent.
+    short_setup = scan["ema9"] < scan["ema21"] and 25 <= scan["rsi"] <= 45
+    if buy_dip:
+        signal = "BUY THE DIP"
+    elif short_setup:
+        signal = "SHORT SETUP (SIMULATION)"
+    elif scan["ema9"] < scan["ema21"]:
+        signal = "BEARISH / WAIT"
+    else:
+        signal = "WAIT"
 
-    # Manage an existing position first. Never open a second position while one is active.
+    # Manage existing position before considering a new one.
     position = st.session_state.position
     if position:
         current_price = scan["inr"]
-        stop_price = position["entry"] * (1 - STOP_LOSS_PCT)
-        target_price = position["entry"] * (1 + TARGET_PCT)
-        exit_reason = None
-        if current_price <= stop_price:
-            exit_reason = "Stop Loss"
-        elif current_price >= target_price:
-            exit_reason = "Target"
-        elif signal == "EXIT / NO BUY":
-            exit_reason = "EMA/RSI exit"
+        if position["side"] == "LONG":
+            stop_price = position["entry"] * (1 - STOP_LOSS_PCT)
+            target_price = position["entry"] * (1 + TARGET_PCT)
+            pnl = (current_price - position["entry"]) * position["btc_qty"]
+            exit_reason = "Stop Loss" if current_price <= stop_price else ("Target" if current_price >= target_price else None)
+            if signal in ("SHORT SETUP (SIMULATION)", "BEARISH / WAIT"):
+                exit_reason = exit_reason or "Trend changed"
+        else:
+            stop_price = position["entry"] * (1 + STOP_LOSS_PCT)
+            target_price = position["entry"] * (1 - TARGET_PCT)
+            pnl = (position["entry"] - current_price) * position["btc_qty"]
+            exit_reason = "Stop Loss" if current_price >= stop_price else ("Target" if current_price <= target_price else None)
+            if signal == "BUY THE DIP":
+                exit_reason = exit_reason or "Bullish reversal"
 
         if exit_reason:
-            pnl = (current_price - position["entry"]) * position["btc_qty"]
             st.session_state.cash += position["stake"] + pnl
             st.session_state.day_pnl += pnl
             st.session_state.trades.append({
-                "Entry Time": position["time"],
-                "Exit Time": scan["time"],
-                "Side": "BUY BTC",
-                "Entry ₹": round(position["entry"], 2),
-                "Exit ₹": round(current_price, 2),
-                "Stake ₹": round(position["stake"], 2),
-                "BTC Qty": round(position["btc_qty"], 8),
-                "P&L ₹": round(pnl, 2),
+                "Entry Time": position["time"], "Exit Time": scan["time"],
+                "Side": position["side"], "Entry ₹": round(position["entry"], 2),
+                "Exit ₹": round(current_price, 2), "Stake ₹": round(position["stake"], 2),
+                "BTC Qty": round(position["btc_qty"], 8), "P&L ₹": round(pnl, 2),
                 "Reason": exit_reason,
             })
             st.session_state.position = None
-            st.session_state.notice = f"Paper SELL हुआ: {exit_reason} | P&L ₹{pnl:,.2f}"
+            st.session_state.notice = f"Paper {position['side']} बंद हुआ: {exit_reason} | P&L ₹{pnl:,.2f}"
         else:
-            unrealized = (current_price - position["entry"]) * position["btc_qty"]
-            st.session_state.notice = f"Position खुली है। अभी Unrealized P&L ₹{unrealized:,.2f}"
+            st.session_state.notice = f"{position['side']} position खुली है। Unrealized P&L ₹{pnl:,.2f}"
 
-    # If flat, enter only when the rule signal is BUY and the daily loss limit allows it.
     candle_key = str(scan["df"].iloc[-1]["time"])
     if "last_entry_candle" not in st.session_state:
         st.session_state.last_entry_candle = None
-
-    if st.session_state.position is None and signal == "BUY SETUP":
+    if st.session_state.position is None and signal in ("BUY THE DIP", "SHORT SETUP (SIMULATION)"):
         if st.session_state.last_entry_candle == candle_key:
-            st.session_state.notice = "इस 5-minute candle पर पहले ही Paper BUY/SELL जाँचा जा चुका है; अगली candle का इंतज़ार करें।"
+            st.session_state.notice = "इस 5-minute candle पर entry पहले ही जाँची जा चुकी है; अगली candle का इंतज़ार करें।"
         elif st.session_state.day_pnl <= -DAILY_LOSS_LIMIT_INR:
-            st.session_state.notice = "Daily loss limit पूरी हो गई; आज नया Paper BUY बंद है।"
-        elif not st.session_state.trades or st.session_state.trades[-1].get("Exit Time") != scan["time"]:
+            st.session_state.notice = "Daily loss limit पूरी हो गई; आज नई entry बंद है।"
+        else:
             stake = min(MAX_STAKE_INR, st.session_state.cash)
-            stop_distance = scan["inr"] * STOP_LOSS_PCT
-            quantity = min(RISK_PER_TRADE_INR / stop_distance, stake / scan["inr"])
+            # Position sizing: 1% adverse move corresponds to max INR 25 risk.
+            qty_by_risk = RISK_PER_TRADE_INR / (scan["inr"] * STOP_LOSS_PCT)
+            quantity = min(qty_by_risk, stake / scan["inr"])
             actual_stake = quantity * scan["inr"]
-            if actual_stake > 0 and actual_stake <= st.session_state.cash:
+            if quantity > 0 and actual_stake <= st.session_state.cash:
+                side = "LONG" if signal == "BUY THE DIP" else "SHORT"
                 st.session_state.cash -= actual_stake
                 st.session_state.position = {
-                    "entry": scan["inr"],
-                    "btc_qty": quantity,
-                    "stake": actual_stake,
-                    "time": scan["time"],
+                    "side": side, "entry": scan["inr"], "btc_qty": quantity,
+                    "stake": actual_stake, "time": scan["time"],
                 }
                 st.session_state.last_entry_candle = candle_key
-                st.session_state.notice = (
-                    f"Automatic PAPER BUY executed • BTC quantity {quantity:.8f} "
-                    f"• Virtual stake ₹{actual_stake:,.2f}"
-                )
+                st.session_state.notice = f"Automatic PAPER {side} opened • BTC {quantity:.8f} • Stake ₹{actual_stake:,.2f}"
             else:
-                st.session_state.notice = "Virtual cash कम है; कोई trade नहीं लिया।"
-    elif st.session_state.position is None and signal != "BUY SETUP":
-        st.session_state.notice = "अभी Paper BUY नहीं हुआ। नियमों के अनुसार WAIT करना भी सही निर्णय है।"
+                st.session_state.notice = "Virtual cash कम है; कोई position नहीं खोली गई।"
+    elif st.session_state.position is None:
+        st.session_state.notice = "अभी entry signal नहीं है। नियमों के अनुसार WAIT करना सही है।"
 
     st.success(st.session_state.notice) if "BUY executed" in st.session_state.notice else st.info(st.session_state.notice)
 
@@ -209,7 +218,7 @@ if scan:
     invested = 0.0
     if open_position:
         invested = open_position["stake"]
-        unrealized_pnl = (scan["inr"] - open_position["entry"]) * open_position["btc_qty"]
+        unrealized_pnl = ((scan["inr"] - open_position["entry"]) if open_position["side"] == "LONG" else (open_position["entry"] - scan["inr"])) * open_position["btc_qty"]
     equity = st.session_state.cash + invested + unrealized_pnl
 
     st.subheader("Paper Account")
@@ -233,10 +242,14 @@ if scan:
     st.subheader(f"AI Rule Signal: {signal}")
     st.write(f"EMA9: ${scan['ema9']:,.2f} | EMA21: ${scan['ema21']:,.2f}")
     if open_position:
-        sl = open_position["entry"] * (1 - STOP_LOSS_PCT)
-        target = open_position["entry"] * (1 + TARGET_PCT)
+        if open_position["side"] == "LONG":
+            sl = open_position["entry"] * (1 - STOP_LOSS_PCT)
+            target = open_position["entry"] * (1 + TARGET_PCT)
+        else:
+            sl = open_position["entry"] * (1 + STOP_LOSS_PCT)
+            target = open_position["entry"] * (1 - TARGET_PCT)
         st.write(
-            f"Open BTC Paper Position • Entry ₹{open_position['entry']:,.2f} "
+            f"Open {open_position['side']} BTC Paper Position • Entry ₹{open_position['entry']:,.2f} "
             f"• Stop Loss ₹{sl:,.2f} • Target ₹{target:,.2f}"
         )
     st.line_chart(scan["df"].set_index("time")[["close", "ema9", "ema21"]].tail(100))
@@ -248,8 +261,8 @@ st.write(f"- Starting virtual capital: ₹{STARTING_INR:,.0f}")
 st.write(f"- Risk budget per trade: अधिकतम ₹{RISK_PER_TRADE_INR:.0f} (1% stop distance)")
 st.write(f"- Daily realized loss stop: ₹{DAILY_LOSS_LIMIT_INR:.0f}")
 st.write("- Target: 2% price rise; Stop Loss: 1% price fall.")
-st.write("- Spot-style long only; no leverage, no short selling, no real orders.")
-st.caption("यह शुरुआती नियम-आधारित Paper Simulator है, लाभ की गारंटी या निवेश सलाह नहीं। Scan दबाने पर ही नई जाँच होती है; यह 24×7 unattended bot नहीं है। Streamlit Cloud restart/sleep होने पर session data reset हो सकता है।")
+st.write("- Buy-the-Dip LONG + SHORT simulation; 1% Stop Loss, 2% Target; no leverage and no real orders.")
+st.caption("यह शुरुआती नियम-आधारित Paper Simulator है, लाभ की गारंटी या निवेश सलाह नहीं। Auto Scan पेज खुला/सक्रिय रहने पर हर मिनट नई जाँच करता है; यह 24×7 unattended bot नहीं है। Streamlit Cloud restart/sleep होने पर session data reset हो सकता है।")
 
 st.subheader("Paper Trade History")
 if st.session_state.trades:

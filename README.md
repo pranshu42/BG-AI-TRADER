@@ -1,28 +1,15 @@
-# BG AI CRYPTO TRADER v1.2 — AUTO SCAN
+# BG AI CRYPTO TRADER v1.3 — Buy the Dip + Short Paper Simulation
 
-BTC spot-style paper trading only. No real exchange orders, API keys, leverage, or short selling.
+- BTC only, Coinbase public BTC-USD 5-minute candles.
+- Buy-the-Dip LONG: bullish EMA trend plus green/recovery candle and RSI confirmation.
+- SHORT simulation: bearish EMA trend and weak RSI. This is only an internal paper simulation, not exchange Futures trading.
+- Auto Scan every 1 minute while the app page remains open and active.
+- Starting virtual capital ₹5,000; max stake ₹2,500; risk budget up to ₹25 per trade.
+- Stop Loss 1%, Target 2%, daily realized loss limit ₹50.
+- No real orders, no API keys, no leverage, no short order sent to any exchange.
 
-## Update your existing GitHub repository
-1. Extract this ZIP.
-2. In the existing `BG-AI-TRADER` repository, replace `app.py` and `requirements.txt` with these versions.
-3. Commit the changes.
-4. Wait for Streamlit Community Cloud to redeploy, then refresh your existing app.
+## Update existing GitHub repository
+Extract this ZIP and replace `app.py`, `requirements.txt`, and `README.md` in the existing `BG-AI-TRADER` repository. Commit changes and wait for Streamlit redeploy.
 
-## Auto Scan
-- Turn on **Auto Scan चालू करें (हर 1 मिनट)** to fetch market data and evaluate the strategy once per minute.
-- Auto Scan works only while the Streamlit app page remains open and active in the browser. It is not a 24/7 cloud background bot; mobile browsers may pause background tabs or sleep.
-- You can still use the manual Fetch button when Auto Scan is off.
-
-## Trading rules
-- Coinbase public BTC-USD 5-minute candles.
-- EMA 9 / EMA 21 + RSI filter.
-- Starting virtual capital ₹5,000.
-- Risk budget up to ₹25 per trade; max stake ₹2,500.
-- Stop loss 1%; target 2%; daily realized loss limit ₹50.
-- Paper trading only. Results are simulated and not profit guarantees.
-
-## Limitations
-- Public data APIs may be unavailable or rate-limited.
-- INR BTC price is estimated from public BTC/INR and BTC/USD values.
-- Streamlit session state may reset on app restart/sleep. This app does not provide durable trade storage.
-- Auto Scan is not guaranteed to run while the phone is locked or the browser tab is in the background.
+## Important limitations
+Auto Scan may pause if the phone locks, browser backgrounds the page, or Streamlit sleeps/restarts. Session-based paper account data can reset after restart. Public market-data APIs can be delayed/rate-limited. This is a simple rule-based educational simulator, not financial advice or a profit guarantee.
