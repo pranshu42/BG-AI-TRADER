@@ -1,282 +1,137 @@
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 import pandas as pd
 import numpy as np
 import requests
 import time
 from datetime import datetime, timezone, date
 
-st.set_page_config(page_title="BG AI CRYPTO TRADER v1.3", page_icon="₿", layout="wide")
-st.title("₿ BG AI CRYPTO TRADER")
-st.caption("BTC Spot + Simulated Short • Auto Paper Trading • No real orders")
+st.set_page_config(page_title="BG AI CRYPTO TRADER", page_icon="₿", layout="wide")
+st.title("₿ BG AI CRYPTO TRADER v1.4")
+st.caption("BTC Paper Trading • Buy the Dip + Short Simulation • ₹5 target per trade")
+st.warning("केवल Paper Trading। कोई असली ऑर्डर, Futures या Leverage नहीं। ₹5 लक्ष्य गारंटी नहीं है। Auto Scan लगभग हर 1 मिनट में चलता है और पेज खुला/सक्रिय रहना चाहिए।")
 
-st.warning(
-    "यह केवल Paper Trading है। Coinbase का सार्वजनिक BTC-USD डेटा पढ़ा जाता है। "
-    "Long और Short दोनों केवल simulation हैं; कोई Futures order, leverage या असली BUY/SELL नहीं। "
-    "Auto Scan के लिए पेज खुला/सक्रिय रहना चाहिए। Streamlit restart पर session reset हो सकता है।"
-)
+START_CASH, MAX_STAKE, RISK, DAILY_LIMIT, TARGET, STOP = 5000.0, 2500.0, 25.0, 50.0, 5.0, 25.0
 
-STARTING_INR = 5000.0
-RISK_PER_TRADE_INR = 25.0
-DAILY_LOSS_LIMIT_INR = 50.0
-MAX_STAKE_INR = 2500.0
-STOP_LOSS_PCT = 0.01
-TARGET_PCT = 0.02
+@st.cache_data(ttl=20)
+def market_data():
+    h={"User-Agent":"BG-AI-CRYPTO-TRADER/1.4"}
+    now=int(time.time())
+    t=requests.get("https://api.exchange.coinbase.com/products/BTC-USD/ticker",headers=h,timeout=12)
+    t.raise_for_status()
+    usd=float(t.json()["price"])
+    r=requests.get("https://api.exchange.coinbase.com/products/BTC-USD/candles",params={"granularity":300,"start":now-90000,"end":now},headers=h,timeout=12)
+    r.raise_for_status()
+    rows=r.json()
+    if len(rows)<35: raise ValueError("Coinbase से पर्याप्त candle data नहीं मिला।")
+    d=pd.DataFrame(rows,columns=["time","low","high","open","close","volume"])
+    d["time"]=pd.to_datetime(d["time"],unit="s",utc=True)
+    for c in ["low","high","open","close","volume"]: d[c]=pd.to_numeric(d[c],errors="coerce")
+    d=d.sort_values("time").drop_duplicates("time").reset_index(drop=True)
+    d["ema9"]=d.close.ewm(span=9,adjust=False).mean()
+    d["ema21"]=d.close.ewm(span=21,adjust=False).mean()
+    delta=d.close.diff()
+    gain=delta.clip(lower=0).rolling(14).mean()
+    loss=(-delta.clip(upper=0)).rolling(14).mean()
+    d["rsi"]=(100-100/(1+gain/loss.replace(0,np.nan))).fillna(50)
+    cg=requests.get("https://api.coingecko.com/api/v3/simple/price",params={"ids":"bitcoin","vs_currencies":"inr"},headers=h,timeout=12)
+    cg.raise_for_status()
+    inr_btc=float(cg.json()["bitcoin"]["inr"])
+    fx=inr_btc/usd
+    last=d.iloc[-1]
+    return {"df":d,"usd":usd,"inr":usd*fx,"fx":fx,"rsi":float(last.rsi),"ema9":float(last.ema9),"ema21":float(last.ema21),"candle":str(last.time),"at":datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}
 
-@st.cache_data(ttl=25)
-def get_btc_data():
-    headers = {"User-Agent": "BG-AI-CRYPTO-TRADER/1.1"}
-    now = int(time.time())
-    start = now - 300 * 300
-    url = "https://api.exchange.coinbase.com/products/BTC-USD/candles"
-    response = requests.get(
-        url,
-        params={"granularity": 300, "start": start, "end": now},
-        headers=headers,
-        timeout=15,
-    )
-    response.raise_for_status()
-    rows = response.json()
-    if not isinstance(rows, list) or len(rows) < 40:
-        raise ValueError("Coinbase से पर्याप्त BTC candles नहीं मिले। थोड़ी देर बाद फिर कोशिश करें।")
-    frame = pd.DataFrame(rows, columns=["time", "low", "high", "open", "close", "volume"])
-    frame["time"] = pd.to_datetime(frame["time"], unit="s", utc=True)
-    for column in ["low", "high", "open", "close", "volume"]:
-        frame[column] = pd.to_numeric(frame[column], errors="coerce")
-    return frame.sort_values("time").drop_duplicates("time").reset_index(drop=True)
+defaults={"cash":START_CASH,"pos":None,"trades":[],"day_pnl":0.0,"pnl_date":date.today().isoformat(),"last_candle":None,"m":None,"notice":"पहली बार Scan करें।"}
+for k,v in defaults.items():
+    if k not in st.session_state: st.session_state[k]=v
+if st.session_state.pnl_date!=date.today().isoformat():
+    st.session_state.pnl_date=date.today().isoformat(); st.session_state.day_pnl=0.0
 
-@st.cache_data(ttl=60)
-def get_inr_rate(btc_usd):
-    url = "https://api.coingecko.com/api/v3/simple/price"
-    response = requests.get(
-        url,
-        params={"ids": "bitcoin", "vs_currencies": "inr"},
-        headers={"User-Agent": "BG-AI-CRYPTO-TRADER/1.1"},
-        timeout=12,
-    )
-    response.raise_for_status()
-    btc_inr = float(response.json()["bitcoin"]["inr"])
-    return btc_inr / float(btc_usd)
+st.subheader("Auto Scan")
+auto=st.toggle("🤖 Auto Scan चालू करें (लगभग हर 1 मिनट)",value=False)
+if auto:
+    from streamlit_autorefresh import st_autorefresh
+    ticks=st_autorefresh(interval=60000,limit=None,key="bg_crypto_v14_refresh")
+else: ticks=0
+manual=st.button("🔄 Fetch Live BTC Data & Scan",type="primary",use_container_width=True)
+scan=manual or (auto and ticks>0)
 
-def add_indicators(frame):
-    data = frame.copy()
-    data["ema9"] = data["close"].ewm(span=9, adjust=False).mean()
-    data["ema21"] = data["close"].ewm(span=21, adjust=False).mean()
-    delta = data["close"].diff()
-    gain = delta.clip(lower=0).rolling(14).mean()
-    loss = (-delta.clip(upper=0)).rolling(14).mean()
-    rs = gain / loss.replace(0, np.nan)
-    data["rsi"] = 100 - (100 / (1 + rs))
-    data["rsi"] = data["rsi"].fillna(50)
-    return data
+def signal(m):
+    d=m["df"]
+    up=m["ema9"]>m["ema21"] and 40<=m["rsi"]<=60 and d.close.iloc[-1]>d.close.iloc[-2]
+    down=m["ema9"]<m["ema21"] and 35<=m["rsi"]<=55 and d.close.iloc[-1]<d.close.iloc[-2]
+    return "BUY" if up else ("SHORT" if down else "WAIT")
 
-# Initialize account state once per Streamlit session.
-if "account_initialized" not in st.session_state:
-    st.session_state.account_initialized = True
-    st.session_state.cash = STARTING_INR
-    st.session_state.position = None
-    st.session_state.trades = []
-    st.session_state.last_scan = None
-    st.session_state.day_pnl = 0.0
-    st.session_state.pnl_date = date.today().isoformat()
-    st.session_state.notice = "पहली बार ऊपर का Scan बटन दबाएँ।"
-
-# Reset realized daily P&L when the calendar date changes.
-today = date.today().isoformat()
-if st.session_state.pnl_date != today:
-    st.session_state.pnl_date = today
-    st.session_state.day_pnl = 0.0
-
-st.subheader("Market & Strategy")
-st.write("Data: Coinbase BTC-USD 5-minute candles. Strategies: Buy-the-Dip reversal + Downtrend Short simulation. No real orders or leverage.")
-
-auto_scan = st.toggle("🤖 Auto Scan चालू करें (हर 1 मिनट)", value=False)
-if auto_scan:
-    st.caption("Auto Scan केवल तब चलता है जब यह Streamlit पेज खुला और सक्रिय रहता है।")
-    auto_tick = st_autorefresh(interval=60_000, limit=None, key="bg_crypto_auto_scan")
-else:
-    auto_tick = 0
-
-manual_scan = st.button("🔄 Fetch Live BTC Data & Scan", type="primary", use_container_width=True)
-should_scan = manual_scan or (auto_scan and auto_tick > 0)
-
-if should_scan:
-    try:
-        raw = get_btc_data()
-        data = add_indicators(raw)
-        last = data.iloc[-1]
-        price_usd = float(last["close"])
-        fx = get_inr_rate(price_usd)
-        price_inr = price_usd * fx
-        if not np.isfinite(price_inr) or price_inr <= 0:
-            raise ValueError("BTC INR कीमत सही नहीं मिली।")
-        st.session_state.last_scan = {
-            "df": data,
-            "usd": price_usd,
-            "fx": fx,
-            "inr": price_inr,
-            "rsi": float(last["rsi"]),
-            "ema9": float(last["ema9"]),
-            "ema21": float(last["ema21"]),
-            "time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-        }
-        st.session_state.notice = "Market data updated."
-    except Exception as error:
-        st.session_state.notice = f"डेटा नहीं मिला: {error}"
-
-scan = st.session_state.last_scan
+def close_trade(m,reason):
+    p=st.session_state.pos
+    px=m["inr"]
+    pnl=(px-p["entry"])*p["qty"] if p["side"]=="BUY" else (p["entry"]-px)*p["qty"]
+    st.session_state.cash += p["stake"]+pnl
+    st.session_state.day_pnl += pnl
+    st.session_state.trades.append({"Entry UTC":p["time"],"Exit UTC":m["at"],"Side":p["side"],"Entry ₹":round(p["entry"],2),"Exit ₹":round(px,2),"BTC":round(p["qty"],8),"P&L ₹":round(pnl,2),"Reason":reason})
+    st.session_state.pos=None
+    st.session_state.notice=f"{p['side']} Paper position बंद • {reason} • P&L ₹{pnl:.2f}"
 
 if scan:
-    signal = "WAIT"
-    candle = scan["df"].iloc[-1]
-    previous = scan["df"].iloc[-2]
-    # Buy-the-Dip: price had been weak, then a green candle/recovery confirmation appears.
-    buy_dip = (
-        scan["ema9"] > scan["ema21"]
-        and float(candle["close"]) > float(candle["open"])
-        and float(candle["close"]) > float(previous["close"])
-        and 40 <= scan["rsi"] <= 58
-    )
-    # Short simulation: bearish trend with weak RSI; no exchange/futures order is sent.
-    short_setup = scan["ema9"] < scan["ema21"] and 25 <= scan["rsi"] <= 45
-    if buy_dip:
-        signal = "BUY THE DIP"
-    elif short_setup:
-        signal = "SHORT SETUP (SIMULATION)"
-    elif scan["ema9"] < scan["ema21"]:
-        signal = "BEARISH / WAIT"
-    else:
-        signal = "WAIT"
+    try:
+        m=market_data(); st.session_state.m=m
+        sig=signal(m); p=st.session_state.pos
+        if p:
+            pnl=(m["inr"]-p["entry"])*p["qty"] if p["side"]=="BUY" else (p["entry"]-m["inr"])*p["qty"]
+            if pnl>=TARGET: close_trade(m,"₹5 Profit Target")
+            elif pnl<=-STOP: close_trade(m,"₹25 Stop Loss")
+            else: st.session_state.notice=f"{p['side']} खुला है • Unrealized P&L ₹{pnl:.2f}"
+        if st.session_state.pos is None and sig in ("BUY","SHORT"):
+            if st.session_state.day_pnl<=-DAILY_LIMIT:
+                st.session_state.notice="Daily loss limit ₹50 पूरी; नया trade बंद।"
+            elif st.session_state.last_candle!=m["candle"]:
+                stake=min(MAX_STAKE,st.session_state.cash)
+                qty=min(RISK/(m["inr"]*0.01),stake/m["inr"])
+                used=qty*m["inr"]
+                if qty>0 and used<=st.session_state.cash:
+                    st.session_state.cash-=used
+                    st.session_state.pos={"side":sig,"entry":m["inr"],"qty":qty,"stake":used,"time":m["at"]}
+                    st.session_state.last_candle=m["candle"]
+                    st.session_state.notice=f"Automatic Paper {sig} खुला • Target ₹5 • Stop ₹25"
+        elif st.session_state.pos is None and sig=="WAIT":
+            st.session_state.notice="अभी Entry Signal नहीं है। WAIT करें।"
+    except Exception as e:
+        st.session_state.notice=f"Market data error: {e}"
 
-    # Manage existing position before considering a new one.
-    position = st.session_state.position
-    if position:
-        current_price = scan["inr"]
-        if position["side"] == "LONG":
-            stop_price = position["entry"] * (1 - STOP_LOSS_PCT)
-            target_price = position["entry"] * (1 + TARGET_PCT)
-            pnl = (current_price - position["entry"]) * position["btc_qty"]
-            exit_reason = "Stop Loss" if current_price <= stop_price else ("Target" if current_price >= target_price else None)
-            if signal in ("SHORT SETUP (SIMULATION)", "BEARISH / WAIT"):
-                exit_reason = exit_reason or "Trend changed"
-        else:
-            stop_price = position["entry"] * (1 + STOP_LOSS_PCT)
-            target_price = position["entry"] * (1 - TARGET_PCT)
-            pnl = (position["entry"] - current_price) * position["btc_qty"]
-            exit_reason = "Stop Loss" if current_price >= stop_price else ("Target" if current_price <= target_price else None)
-            if signal == "BUY THE DIP":
-                exit_reason = exit_reason or "Bullish reversal"
-
-        if exit_reason:
-            st.session_state.cash += position["stake"] + pnl
-            st.session_state.day_pnl += pnl
-            st.session_state.trades.append({
-                "Entry Time": position["time"], "Exit Time": scan["time"],
-                "Side": position["side"], "Entry ₹": round(position["entry"], 2),
-                "Exit ₹": round(current_price, 2), "Stake ₹": round(position["stake"], 2),
-                "BTC Qty": round(position["btc_qty"], 8), "P&L ₹": round(pnl, 2),
-                "Reason": exit_reason,
-            })
-            st.session_state.position = None
-            st.session_state.last_entry_candle = str(scan["df"].iloc[-1]["time"])
-            st.session_state.notice = f"Paper {position['side']} बंद हुआ: {exit_reason} | P&L ₹{pnl:,.2f}"
-        else:
-            st.session_state.notice = f"{position['side']} position खुली है। Unrealized P&L ₹{pnl:,.2f}"
-
-    candle_key = str(scan["df"].iloc[-1]["time"])
-    if "last_entry_candle" not in st.session_state:
-        st.session_state.last_entry_candle = None
-    if st.session_state.position is None and signal in ("BUY THE DIP", "SHORT SETUP (SIMULATION)"):
-        if st.session_state.last_entry_candle == candle_key:
-            st.session_state.notice = "इस 5-minute candle पर entry पहले ही जाँची जा चुकी है; अगली candle का इंतज़ार करें।"
-        elif st.session_state.day_pnl <= -DAILY_LOSS_LIMIT_INR:
-            st.session_state.notice = "Daily loss limit पूरी हो गई; आज नई entry बंद है।"
-        else:
-            stake = min(MAX_STAKE_INR, st.session_state.cash)
-            # Position sizing: 1% adverse move corresponds to max INR 25 risk.
-            qty_by_risk = RISK_PER_TRADE_INR / (scan["inr"] * STOP_LOSS_PCT)
-            quantity = min(qty_by_risk, stake / scan["inr"])
-            actual_stake = quantity * scan["inr"]
-            if quantity > 0 and actual_stake <= st.session_state.cash:
-                side = "LONG" if signal == "BUY THE DIP" else "SHORT"
-                st.session_state.cash -= actual_stake
-                st.session_state.position = {
-                    "side": side, "entry": scan["inr"], "btc_qty": quantity,
-                    "stake": actual_stake, "time": scan["time"],
-                }
-                st.session_state.last_entry_candle = candle_key
-                st.session_state.notice = f"Automatic PAPER {side} opened • BTC {quantity:.8f} • Stake ₹{actual_stake:,.2f}"
-            else:
-                st.session_state.notice = "Virtual cash कम है; कोई position नहीं खोली गई।"
-    elif st.session_state.position is None:
-        st.session_state.notice = "अभी entry signal नहीं है। नियमों के अनुसार WAIT करना सही है।"
-
-    # Render the status message as a Streamlit alert, never as a code sample.
-    if "opened" in st.session_state.notice or "executed" in st.session_state.notice:
-        st.success(st.session_state.notice)
-    else:
-        st.info(st.session_state.notice)
-
-    # Recalculate and display account values AFTER all trade actions, fixing stale metrics.
-    open_position = st.session_state.position
-    unrealized_pnl = 0.0
-    invested = 0.0
-    if open_position:
-        invested = open_position["stake"]
-        unrealized_pnl = ((scan["inr"] - open_position["entry"]) if open_position["side"] == "LONG" else (open_position["entry"] - scan["inr"])) * open_position["btc_qty"]
-    equity = st.session_state.cash + invested + unrealized_pnl
-
+m=st.session_state.m
+if m:
+    sig=signal(m); p=st.session_state.pos
+    unreal=0.0; invested=0.0
+    if p:
+        invested=p["stake"]
+        unreal=(m["inr"]-p["entry"])*p["qty"] if p["side"]=="BUY" else (p["entry"]-m["inr"])*p["qty"]
+    equity=st.session_state.cash+invested+unreal
+    st.subheader("Market Snapshot")
+    a,b,c,d=st.columns(4)
+    a.metric("BTC/USD",f"${m['usd']:,.2f}"); b.metric("BTC INR approx",f"₹{m['inr']:,.0f}")
+    c.metric("RSI",f"{m['rsi']:.1f}"); d.metric("USD/INR approx",f"{m['fx']:.2f}")
+    st.write(f"EMA9: ${m['ema9']:,.2f} | EMA21: ${m['ema21']:,.2f}")
+    st.subheader("AI Signal"); st.write(f"**{sig}**"); st.info(st.session_state.notice)
     st.subheader("Paper Account")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Free Virtual Cash", f"₹{st.session_state.cash:,.2f}")
-    m2.metric("Open Position", "YES" if open_position else "NO")
-    m3.metric("Total Virtual Equity", f"₹{equity:,.2f}")
-    m4, m5, m6 = st.columns(3)
-    m4.metric("Daily Realized P&L", f"₹{st.session_state.day_pnl:,.2f}")
-    m5.metric("Unrealized P&L", f"₹{unrealized_pnl:,.2f}")
-    m6.metric("Invested Stake", f"₹{invested:,.2f}")
+    a,b,c=st.columns(3)
+    a.metric("Free Virtual Cash",f"₹{st.session_state.cash:,.2f}")
+    b.metric("Open Position","YES" if p else "NO")
+    c.metric("Total Virtual Equity",f"₹{equity:,.2f}")
+    a,b,c=st.columns(3)
+    a.metric("Daily Realized P&L",f"₹{st.session_state.day_pnl:,.2f}")
+    b.metric("Unrealized P&L",f"₹{unreal:,.2f}")
+    c.metric("Invested Stake",f"₹{invested:,.2f}")
+    if p: st.write(f"Open {p['side']} • Entry ₹{p['entry']:,.2f} • ₹5 target / ₹25 stop")
+    st.line_chart(m["df"].set_index("time")[["close","ema9","ema21"]].tail(100))
+    st.caption(f"Last scan: {m['at']}")
+else: st.info(st.session_state.notice)
 
-    st.subheader("Live BTC Market")
-    a, b, c, d = st.columns(4)
-    a.metric("BTC Price (approx INR)", f"₹{scan['inr']:,.0f}")
-    b.metric("BTC/USD", f"${scan['usd']:,.2f}")
-    c.metric("RSI (14)", f"{scan['rsi']:.1f}")
-    d.metric("USD/INR (estimated)", f"{scan['fx']:.2f}")
-    st.caption(f"Last fetched: {scan['time']} • INR value estimated from public BTC/INR and BTC/USD prices.")
-
-    st.subheader(f"AI Rule Signal: {signal}")
-    st.write(f"EMA9: ${scan['ema9']:,.2f} | EMA21: ${scan['ema21']:,.2f}")
-    if open_position:
-        if open_position["side"] == "LONG":
-            sl = open_position["entry"] * (1 - STOP_LOSS_PCT)
-            target = open_position["entry"] * (1 + TARGET_PCT)
-        else:
-            sl = open_position["entry"] * (1 + STOP_LOSS_PCT)
-            target = open_position["entry"] * (1 - TARGET_PCT)
-        st.write(
-            f"Open {open_position['side']} BTC Paper Position • Entry ₹{open_position['entry']:,.2f} "
-            f"• Stop Loss ₹{sl:,.2f} • Target ₹{target:,.2f}"
-        )
-    st.line_chart(scan["df"].set_index("time")[["close", "ema9", "ema21"]].tail(100))
-else:
-    st.info(st.session_state.notice)
-
-st.subheader("Risk Rules")
-st.write(f"- Starting virtual capital: ₹{STARTING_INR:,.0f}")
-st.write(f"- Risk budget per trade: अधिकतम ₹{RISK_PER_TRADE_INR:.0f} (1% stop distance)")
-st.write(f"- Daily realized loss stop: ₹{DAILY_LOSS_LIMIT_INR:.0f}")
-st.write("- Target: 2% price rise; Stop Loss: 1% price fall.")
-st.write("- Buy-the-Dip LONG + SHORT simulation; 1% Stop Loss, 2% Target; no leverage and no real orders.")
-st.caption("यह शुरुआती नियम-आधारित Paper Simulator है, लाभ की गारंटी या निवेश सलाह नहीं। Auto Scan पेज खुला/सक्रिय रहने पर हर मिनट नई जाँच करता है; यह 24×7 unattended bot नहीं है। Streamlit Cloud restart/sleep होने पर session data reset हो सकता है।")
-
-st.subheader("Paper Trade History")
-if st.session_state.trades:
-    st.dataframe(pd.DataFrame(st.session_state.trades), use_container_width=True, hide_index=True)
-else:
-    st.write("अभी कोई बंद Paper Trade नहीं है।")
-
+st.subheader("Rules")
+st.write("₹5,000 virtual capital • Max stake ₹2,500 • Risk budget ₹25 • Profit target ₹5 per closed trade • Stop loss ₹25 • Daily loss limit ₹50.")
+st.write("Buy-the-Dip LONG and Downtrend SHORT are rule-based paper simulations; one position at a time.")
+st.caption("यह हर सेकंड ट्रेड नहीं करता। Auto Scan लगभग हर 1 मिनट में live ticker पढ़ता है, जबकि indicators 5-minute candles से बनते हैं। ₹5 target guaranteed नहीं है; fees/slippage नहीं जोड़े गए। Public APIs rate-limit कर सकती हैं। Session restart पर account/history reset हो सकते हैं।")
+st.subheader("Closed Paper Trades")
+if st.session_state.trades: st.dataframe(pd.DataFrame(st.session_state.trades),use_container_width=True,hide_index=True)
+else: st.write("अभी कोई बंद Paper Trade नहीं है।")
 if st.button("Reset Paper Account"):
-    for key in ["cash", "position", "trades", "last_scan", "day_pnl", "pnl_date", "notice", "account_initialized"]:
-        if key in st.session_state:
-            del st.session_state[key]
+    for k in list(st.session_state.keys()): del st.session_state[k]
     st.rerun()

@@ -1,23 +1,12 @@
-# BG AI CRYPTO TRADER v1.3.1 — DISPLAY FIX
+# BG AI CRYPTO TRADER v1.4
+BTC paper simulator with Buy the Dip LONG and Downtrend SHORT signals.
+- ₹5 profit target per completed paper trade (not guaranteed)
+- ₹25 stop loss per trade; ₹50 daily realized loss limit
+- ₹5,000 virtual capital; ₹2,500 maximum stake
+- Auto Scan approximately once per minute while page remains open/active
+- Uses Coinbase BTC-USD public ticker/candles and approximate INR conversion
+- No real orders, API keys, futures, or leverage
 
-This version keeps both paper strategies:
-- Buy-the-Dip LONG simulation
-- Downtrend SHORT simulation
+Update existing GitHub repository by extracting this ZIP and replacing app.py, requirements.txt and README.md. Commit changes, then wait for Streamlit Cloud to redeploy.
 
-It renders trade status using a normal explicit Streamlit `if/else` alert and prevents a position from closing and reopening/reversing on the same 5-minute candle.
-
-## Update your existing GitHub repository
-1. Extract this ZIP.
-2. Replace `app.py`, `requirements.txt`, and `README.md` in your existing `BG-AI-TRADER` repository.
-3. Commit changes.
-4. Wait for Streamlit Community Cloud to redeploy, then refresh the app.
-
-## Paper-only risk settings
-- Virtual starting capital: ₹5,000
-- Risk budget: up to ₹25 per trade
-- Maximum stake: ₹2,500
-- Stop loss: 1%; target: 2%
-- Daily realized loss limit: ₹50
-- No exchange API keys, real orders, futures, or leverage.
-
-Auto Scan runs only while the Streamlit page remains open and active. It is not a 24/7 background bot. Streamlit session state may reset after a restart/sleep. Public market data may be unavailable or rate-limited. This is a simulation, not a profit guarantee or investment advice.
+Limitations: Not a 24/7 bot; not second-by-second trading. Entry indicators use 5-minute candles. Public APIs can fail/rate-limit. Fees/slippage are not modelled. Streamlit session state can reset after sleep/restart. Paper trading only; no profit guarantee or investment advice.
