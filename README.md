@@ -1,15 +1,23 @@
-# BG AI CRYPTO TRADER v1.3 — Buy the Dip + Short Paper Simulation
+# BG AI CRYPTO TRADER v1.3.1 — DISPLAY FIX
 
-- BTC only, Coinbase public BTC-USD 5-minute candles.
-- Buy-the-Dip LONG: bullish EMA trend plus green/recovery candle and RSI confirmation.
-- SHORT simulation: bearish EMA trend and weak RSI. This is only an internal paper simulation, not exchange Futures trading.
-- Auto Scan every 1 minute while the app page remains open and active.
-- Starting virtual capital ₹5,000; max stake ₹2,500; risk budget up to ₹25 per trade.
-- Stop Loss 1%, Target 2%, daily realized loss limit ₹50.
-- No real orders, no API keys, no leverage, no short order sent to any exchange.
+This version keeps both paper strategies:
+- Buy-the-Dip LONG simulation
+- Downtrend SHORT simulation
 
-## Update existing GitHub repository
-Extract this ZIP and replace `app.py`, `requirements.txt`, and `README.md` in the existing `BG-AI-TRADER` repository. Commit changes and wait for Streamlit redeploy.
+It renders trade status using a normal explicit Streamlit `if/else` alert and prevents a position from closing and reopening/reversing on the same 5-minute candle.
 
-## Important limitations
-Auto Scan may pause if the phone locks, browser backgrounds the page, or Streamlit sleeps/restarts. Session-based paper account data can reset after restart. Public market-data APIs can be delayed/rate-limited. This is a simple rule-based educational simulator, not financial advice or a profit guarantee.
+## Update your existing GitHub repository
+1. Extract this ZIP.
+2. Replace `app.py`, `requirements.txt`, and `README.md` in your existing `BG-AI-TRADER` repository.
+3. Commit changes.
+4. Wait for Streamlit Community Cloud to redeploy, then refresh the app.
+
+## Paper-only risk settings
+- Virtual starting capital: ₹5,000
+- Risk budget: up to ₹25 per trade
+- Maximum stake: ₹2,500
+- Stop loss: 1%; target: 2%
+- Daily realized loss limit: ₹50
+- No exchange API keys, real orders, futures, or leverage.
+
+Auto Scan runs only while the Streamlit page remains open and active. It is not a 24/7 background bot. Streamlit session state may reset after a restart/sleep. Public market data may be unavailable or rate-limited. This is a simulation, not a profit guarantee or investment advice.

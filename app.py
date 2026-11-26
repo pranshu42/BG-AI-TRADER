@@ -178,6 +178,7 @@ if scan:
                 "Reason": exit_reason,
             })
             st.session_state.position = None
+            st.session_state.last_entry_candle = str(scan["df"].iloc[-1]["time"])
             st.session_state.notice = f"Paper {position['side']} बंद हुआ: {exit_reason} | P&L ₹{pnl:,.2f}"
         else:
             st.session_state.notice = f"{position['side']} position खुली है। Unrealized P&L ₹{pnl:,.2f}"
@@ -210,11 +211,12 @@ if scan:
     elif st.session_state.position is None:
         st.session_state.notice = "अभी entry signal नहीं है। नियमों के अनुसार WAIT करना सही है।"
 
-    # Show status as a normal alert
-if "opened" in st.session_state.notice or "executed" in st.session_state.notice:
-    st.success(st.session_state.notice)
-else:
-    st.info(st.session_state.notice)
+    # Render the status message as a Streamlit alert, never as a code sample.
+    if "opened" in st.session_state.notice or "executed" in st.session_state.notice:
+        st.success(st.session_state.notice)
+    else:
+        st.info(st.session_state.notice)
+
     # Recalculate and display account values AFTER all trade actions, fixing stale metrics.
     open_position = st.session_state.position
     unrealized_pnl = 0.0
