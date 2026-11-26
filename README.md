@@ -1,33 +1,22 @@
-# BG AI TRADER v1.0 — Paper Trading
+# BG AI TRADER v1.1 — Auto Paper Trading
 
-यह शुरुआती Streamlit ऐप केवल paper trading अभ्यास के लिए है।
+## Features
+- ₹5,000 virtual capital
+- India + USA sample watchlist
+- Daily historical data scan using Yahoo Finance (`yfinance`)
+- Swing strategy: EMA 9/21, RSI(14), volume confirmation
+- Automatic paper BUY on button press, max 2 new buys/day
+- Simulated stop-loss/target exits checked on subsequent scans
+- Positions, trade history, CSV export
 
-## इसमें क्या है
-- ₹5,000 का virtual starting cash
-- Manual simulated BUY/SELL orders
-- Positions और trade history
-- प्रति BUY ₹25 planned-risk check
-- प्रति दिन ₹50 realized-loss stop
-- अधिकतम 2 paper trades/day
-- CSV history export
+## Important limitations
+- Paper trading only; no Navia API or live order execution.
+- Yahoo Finance data can be delayed, incomplete, or unavailable; it is not an official exchange feed.
+- The scanner runs only when the user presses the scan button, not 24/7 in the background.
+- Positions and history are held in Streamlit session state and may be lost on app restart/session reset.
+- Stop/target exits are checked only when a new scan is run, at the latest downloaded daily close.
+- The strategy is a simple educational rule set, not a validated predictive AI and does not guarantee profit.
+- No F&O or leverage.
 
-## जरूरी सीमाएँ
-- यह Navia API से कनेक्ट नहीं है।
-- इसमें live market prices नहीं आते; execution price आप स्वयं भरते हैं।
-- Stop Loss/Target अभी केवल रिकॉर्ड होते हैं, auto-trigger नहीं।
-- ऐप रीस्टार्ट होने पर session data मिट सकता है।
-- यह निवेश सलाह नहीं है और मुनाफे की गारंटी नहीं देता।
-- Live trading कोड/बटन शामिल नहीं है।
-
-## Cloud पर मुफ्त demo deploy
-1. GitHub पर नया repository बनाइए: `bg-ai-trader`
-2. इस ZIP की तीनों फाइलें repository में upload कीजिए: `app.py`, `requirements.txt`, `README.md`
-3. https://share.streamlit.io खोलिए और GitHub से sign in कीजिए।
-4. Create app चुनिए।
-5. Repository: `bg-ai-trader`, Branch: `main`, Main file path: `app.py`
-6. Deploy दबाइए।
-
-Streamlit Community Cloud free hosting देता है, लेकिन यह हमेशा चालू रहने वाले production trading server या persistent database का विकल्प नहीं है। इस paper demo में session data restart पर खो सकता है।
-
-## Navia API
-Navia API credentials अभी न डालें। Live integration से पहले Navia से लिखित रूप में API onboarding, static IP, OAuth/2FA, algo tagging/registration और applicable exchange requirements confirm करें।
+## Deploy update
+Upload/replace `app.py`, `requirements.txt`, and `README.md` in the existing GitHub repository. Streamlit Community Cloud will redeploy after commit.
