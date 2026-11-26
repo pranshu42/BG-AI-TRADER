@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import pandas as pd
 import numpy as np
 import requests
@@ -89,7 +90,17 @@ if st.session_state.pnl_date != today:
 st.subheader("Market & Strategy")
 st.write("Data: Coinbase BTC-USD 5-minute candles. Strategy: EMA 9/21 + RSI filter. Long-only paper trades; no leverage.")
 
-if st.button("🔄 Fetch Live BTC Data & Scan", type="primary", use_container_width=True):
+auto_scan = st.toggle("🤖 Auto Scan चालू करें (हर 1 मिनट)", value=False)
+if auto_scan:
+    st.caption("Auto Scan केवल तब चलता है जब यह Streamlit पेज खुला और सक्रिय रहता है।")
+    auto_tick = st_autorefresh(interval=60_000, limit=None, key="bg_crypto_auto_scan")
+else:
+    auto_tick = 0
+
+manual_scan = st.button("🔄 Fetch Live BTC Data & Scan", type="primary", use_container_width=True)
+should_scan = manual_scan or (auto_scan and auto_tick > 0)
+
+if should_scan:
     try:
         raw = get_btc_data()
         data = add_indicators(raw)
@@ -158,8 +169,14 @@ if scan:
             st.session_state.notice = f"Position खुली है। अभी Unrealized P&L ₹{unrealized:,.2f}"
 
     # If flat, enter only when the rule signal is BUY and the daily loss limit allows it.
+    candle_key = str(scan["df"].iloc[-1]["time"])
+    if "last_entry_candle" not in st.session_state:
+        st.session_state.last_entry_candle = None
+
     if st.session_state.position is None and signal == "BUY SETUP":
-        if st.session_state.day_pnl <= -DAILY_LOSS_LIMIT_INR:
+        if st.session_state.last_entry_candle == candle_key:
+            st.session_state.notice = "इस 5-minute candle पर पहले ही Paper BUY/SELL जाँचा जा चुका है; अगली candle का इंतज़ार करें।"
+        elif st.session_state.day_pnl <= -DAILY_LOSS_LIMIT_INR:
             st.session_state.notice = "Daily loss limit पूरी हो गई; आज नया Paper BUY बंद है।"
         elif not st.session_state.trades or st.session_state.trades[-1].get("Exit Time") != scan["time"]:
             stake = min(MAX_STAKE_INR, st.session_state.cash)
@@ -174,6 +191,7 @@ if scan:
                     "stake": actual_stake,
                     "time": scan["time"],
                 }
+                st.session_state.last_entry_candle = candle_key
                 st.session_state.notice = (
                     f"Automatic PAPER BUY executed • BTC quantity {quantity:.8f} "
                     f"• Virtual stake ₹{actual_stake:,.2f}"

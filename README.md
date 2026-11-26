@@ -1,35 +1,28 @@
-# BG AI CRYPTO TRADER v1.1 — Fixed
+# BG AI CRYPTO TRADER v1.2 — AUTO SCAN
 
-Bitcoin (BTC) spot-style paper trading simulator. No real orders, no exchange login, no API keys.
+BTC spot-style paper trading only. No real exchange orders, API keys, leverage, or short selling.
 
-## Files
-- `app.py`
-- `requirements.txt`
-
-## Deploy/update the existing GitHub repository
-1. Extract this ZIP on your phone/computer.
-2. In your existing `BG-AI-TRADER` GitHub repository, replace the old `app.py` and `requirements.txt` with these files.
+## Update your existing GitHub repository
+1. Extract this ZIP.
+2. In the existing `BG-AI-TRADER` repository, replace `app.py` and `requirements.txt` with these versions.
 3. Commit the changes.
-4. Streamlit Community Cloud should redeploy the existing app. Refresh the app after deployment.
+4. Wait for Streamlit Community Cloud to redeploy, then refresh your existing app.
 
-## What was fixed
-- Account metrics are displayed after the BUY/SELL action, so cash and open-position status update immediately.
-- Free cash, invested stake, total virtual equity, realized P&L, and unrealized P&L are shown separately.
-- An open position is managed before any new entry; the app will not open a second position while one is active.
-- Daily realized P&L resets when the calendar date changes within the active session.
+## Auto Scan
+- Turn on **Auto Scan चालू करें (हर 1 मिनट)** to fetch market data and evaluate the strategy once per minute.
+- Auto Scan works only while the Streamlit app page remains open and active in the browser. It is not a 24/7 cloud background bot; mobile browsers may pause background tabs or sleep.
+- You can still use the manual Fetch button when Auto Scan is off.
 
-## Strategy / safety
+## Trading rules
 - Coinbase public BTC-USD 5-minute candles.
-- EMA 9 / EMA 21 and RSI filter.
-- Starting virtual capital: INR 5,000.
-- Risk budget: up to INR 25 per trade; max stake INR 2,500.
-- Stop loss: 1%; target: 2%.
-- Daily realized loss limit: INR 50.
-- Long-only, no leverage, no short selling, no real trades.
+- EMA 9 / EMA 21 + RSI filter.
+- Starting virtual capital ₹5,000.
+- Risk budget up to ₹25 per trade; max stake ₹2,500.
+- Stop loss 1%; target 2%; daily realized loss limit ₹50.
+- Paper trading only. Results are simulated and not profit guarantees.
 
-## Important limitations
-- Scan is manual; this is not a 24x7 background bot.
-- Public data feeds may be unavailable or rate-limited.
+## Limitations
+- Public data APIs may be unavailable or rate-limited.
 - INR BTC price is estimated from public BTC/INR and BTC/USD values.
-- Streamlit Cloud session state can reset on app sleep/restart. This version does not provide durable trade storage.
-- Paper results are simulations, not profit guarantees or investment advice.
+- Streamlit session state may reset on app restart/sleep. This app does not provide durable trade storage.
+- Auto Scan is not guaranteed to run while the phone is locked or the browser tab is in the background.
