@@ -1,10 +1,22 @@
-# BG AI TRADER v1.2 — India NSE Only
+# BG AI TRADER v1.3 — India NSE Only
 
-- ₹5,000 virtual capital; INR-only accounting
-- NSE cash-equity watchlist only; USA stocks removed
-- Daily historical Yahoo Finance data
-- Swing rule: EMA 9/21, RSI(14), volume confirmation
-- Paper BUY on scan-button press; simulated stop/target exits on a later scan
-- Planned risk ₹25/trade, daily realized loss limit ₹50, max 2 new buys/day
+## What changed
+- India NSE cash-equity watchlist only.
+- ₹5,000 virtual capital.
+- Max 2 new simulated BUYs per day.
+- Planned stop-loss risk capped at ₹25 per trade using whole-share quantity.
+- If even one share exceeds the risk budget, the BUY is skipped.
+- Daily realized loss limit ₹50.
+- Paper stop/target exits are evaluated on a subsequent manual scan.
+- Trade history CSV export.
 
-Important: educational paper trading only. No Navia API or live orders. Yahoo Finance data may be delayed, incomplete or unavailable. Scanner is manual, not 24/7. Exits are checked only on a subsequent scan. Streamlit session restart may erase positions/history. No profit guarantee; no F&O or leverage.
+## Strategy
+Daily EMA 9/21 trend, RSI(14) between 50 and 68, and latest daily volume at/above 20-day average.
+
+## Important limitations
+- Educational paper trading only; no Navia API and no live orders.
+- Yahoo Finance daily data may be delayed, incomplete or unavailable.
+- Scan and simulated exits run only when the user presses the scan button; not 24/7.
+- Stop/target checks use available daily data, not live intraday ticks.
+- The JSON state file is local runtime convenience only. Streamlit Community Cloud may clear it on restart/redeploy. Download the CSV history regularly. A persistent cloud database (e.g. Supabase) must be configured separately for reliable long-term records.
+- No profit guarantee. This is a simple rules-based strategy, not validated predictive AI.
