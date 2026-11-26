@@ -210,8 +210,11 @@ if scan:
     elif st.session_state.position is None:
         st.session_state.notice = "अभी entry signal नहीं है। नियमों के अनुसार WAIT करना सही है।"
 
-    st.success(st.session_state.notice) if "BUY executed" in st.session_state.notice else st.info(st.session_state.notice)
-
+    # Show status as a normal alert
+if "opened" in st.session_state.notice or "executed" in st.session_state.notice:
+    st.success(st.session_state.notice)
+else:
+    st.info(st.session_state.notice)
     # Recalculate and display account values AFTER all trade actions, fixing stale metrics.
     open_position = st.session_state.position
     unrealized_pnl = 0.0
