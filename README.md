@@ -1,22 +1,31 @@
-# BG AI TRADER v1.3 — India NSE Only
+# BG AI TRADER v1.5 — India Paper Trading
 
-## What changed
-- India NSE cash-equity watchlist only.
-- ₹5,000 virtual capital.
-- Max 2 new simulated BUYs per day.
-- Planned stop-loss risk capped at ₹25 per trade using whole-share quantity.
-- If even one share exceeds the risk budget, the BUY is skipped.
-- Daily realized loss limit ₹50.
-- Paper stop/target exits are evaluated on a subsequent manual scan.
-- Trade history CSV export.
-
-## Strategy
-Daily EMA 9/21 trend, RSI(14) between 50 and 68, and latest daily volume at/above 20-day average.
+## Included
+- NSE intraday paper-trade journal
+- NIFTY, BANKNIFTY and selected stock-options paper journal (CE/PE)
+- Manual verified entry/exit price, strike, expiry and lot size
+- Per-trade planned risk check (₹25), daily realized loss guard (₹50)
+- Maximum 2 new trades per day
+- SQLite trade history and CSV export
 
 ## Important limitations
-- Educational paper trading only; no Navia API and no live orders.
-- Yahoo Finance daily data may be delayed, incomplete or unavailable.
-- Scan and simulated exits run only when the user presses the scan button; not 24/7.
-- Stop/target checks use available daily data, not live intraday ticks.
-- The JSON state file is local runtime convenience only. Streamlit Community Cloud may clear it on restart/redeploy. Download the CSV history regularly. A persistent cloud database (e.g. Supabase) must be configured separately for reliable long-term records.
-- No profit guarantee. This is a simple rules-based strategy, not validated predictive AI.
+- Paper trading only. No broker connection and no live order execution.
+- This build does not fetch live NSE option-chain data or option premiums.
+- Enter contract expiry, strike, lot size and premium only after verifying them from a reliable exchange/broker source.
+- Prices and stop/target are not monitored in the background. The user must manually enter an exit price.
+- Brokerage, taxes, slippage, margin, exercise/assignment and expiry settlement are not modelled.
+- Streamlit Community Cloud local SQLite storage may not be durable across app rebuilds/restarts. Download CSV backups regularly. For durable cloud storage, configure an external database separately.
+
+## Run locally
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## Deploy on Streamlit Community Cloud
+1. Upload `app.py`, `requirements.txt`, and `README.md` to the `main` branch of your GitHub repository.
+2. In Streamlit Community Cloud, select repository `pranshu42/BG-AI-TRADER`.
+3. Set branch to `main` and main file path to `app.py`.
+4. Deploy / wait for the app to reboot.
+
+If your existing repository has an `app.py`, replace it only after keeping a backup of the old version.
